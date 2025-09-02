@@ -188,9 +188,15 @@ def _process_case(
 
         return _cb
 
-    def recon_avg_for_channel(src2d: Any) -> Any:
-        with record(ts, "laplacian_build"):
-            laps, base, _ = build_laplacian_pyramid(src2d, acfg.pyramid_levels)
+    # Precompute per-channel pyramids once; reuse for 100% and all zooms
+    with record(ts, "laplacian_build_inputs"):
+        per_channel_pyramids: list[tuple[list[Any], Any]] = []
+        for ch in recon_inputs:
+            laps, base, _ = build_laplacian_pyramid(ch, acfg.pyramid_levels)
+            per_channel_pyramids.append((laps, base))
+
+    def recon_avg_for_channel(idx: int) -> Any:
+        laps, base = per_channel_pyramids[idx]
         with record(ts, "stochastic_average"):
             return stochastic_average(
                 laps,
@@ -205,15 +211,15 @@ def _process_case(
             )
 
     if color_mode == "gray":
-        recon_100 = recon_avg_for_channel(recon_inputs[0])
+        recon_100 = recon_avg_for_channel(0)
         with record(ts, "save_image"):
             save_image(recon_100, paths.output_dir / "recon_zoom_100_avg.png")
         with record(ts, "metrics_compare"):
             metrics = compare_to_original(img_gray, recon_100)
     elif color_mode == "rgb":
-        r100 = recon_avg_for_channel(recon_inputs[0])
-        g100 = recon_avg_for_channel(recon_inputs[1])
-        b100 = recon_avg_for_channel(recon_inputs[2])
+        r100 = recon_avg_for_channel(0)
+        g100 = recon_avg_for_channel(1)
+        b100 = recon_avg_for_channel(2)
         recon_100 = np.stack([r100, g100, b100], axis=2)
         with record(ts, "save_image"):
             save_image(recon_100, paths.output_dir / "recon_zoom_100_avg.png")
@@ -222,7 +228,7 @@ def _process_case(
                 rgb_to_gray(img_any), rgb_to_gray(recon_100)
             )
     else:  # luma
-        y100 = recon_avg_for_channel(recon_inputs[0])
+        y100 = recon_avg_for_channel(0)
         assert cb is not None and cr is not None
         recon_100 = ycbcr_to_rgb(y100, cb, cr)
         with record(ts, "save_image"):
@@ -250,11 +256,8 @@ def _process_case(
         )
         rw = tw * (3 if color_mode == "rgb" else 1)
 
-        def recon_pair_for_channel(src2d: Any) -> tuple[Any, Any]:
-            with record(ts, "laplacian_build"):
-                laps, base, _ = build_laplacian_pyramid(
-                    src2d, acfg.pyramid_levels
-                )
+        def recon_pair_for_channel(idx: int) -> tuple[Any, Any]:
+            laps, base = per_channel_pyramids[idx]
             with record(ts, "stochastic_reconstruct"):
                 s1 = stochastic_reconstruct(
                     laps,
@@ -281,7 +284,7 @@ def _process_case(
             return s1, savg
 
         if color_mode == "gray":
-            s1, savg = recon_pair_for_channel(recon_inputs[0])
+            s1, savg = recon_pair_for_channel(0)
             with record(ts, "save_image"):
                 save_image(
                     s1, paths.output_dir / f"recon_zoom_{z}_sample1.png"
@@ -289,9 +292,9 @@ def _process_case(
             with record(ts, "save_image"):
                 save_image(savg, paths.output_dir / f"recon_zoom_{z}_avg.png")
         elif color_mode == "rgb":
-            r1, ravg = recon_pair_for_channel(recon_inputs[0])
-            g1, gavg = recon_pair_for_channel(recon_inputs[1])
-            b1, bavg = recon_pair_for_channel(recon_inputs[2])
+            r1, ravg = recon_pair_for_channel(0)
+            g1, gavg = recon_pair_for_channel(1)
+            b1, bavg = recon_pair_for_channel(2)
             with record(ts, "save_image"):
                 save_image(
                     np.stack([r1, g1, b1], axis=2),
@@ -303,7 +306,7 @@ def _process_case(
                     paths.output_dir / f"recon_zoom_{z}_avg.png",
                 )
         else:  # luma
-            y1, yavg = recon_pair_for_channel(recon_inputs[0])
+            y1, yavg = recon_pair_for_channel(0)
             assert cb is not None and cr is not None
             with record(ts, "save_image"):
                 save_image(
@@ -316,7 +319,10 @@ def _process_case(
                     paths.output_dir / f"recon_zoom_{z}_avg.png",
                 )
     # ensure batched progress is flushed per-zoom
-    throttled_z.flush()
+    try:
+        throttled_z.flush()  # type: ignore[name-defined]
+    except NameError:
+        pass
 
     # Persist per-case timings
     # Flush any pending progress increments

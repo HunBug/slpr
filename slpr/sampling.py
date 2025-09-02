@@ -33,16 +33,25 @@ def _sample_patch(
     return float(img[sy, sx])
 
 
-def _map_coord(
+def _map_row_cols(
     level_shape: Tuple[int, int],
     target_shape: Tuple[int, int],
     y: int,
-    x: int,
-) -> Tuple[int, int]:
+) -> Tuple[int, np.ndarray[Any, Any]]:
+    """Map row y to level-row and target columns to level columns.
+
+    Returns (yy_scalar, xx_vector) for the given row y. This matches
+    applying the previous _map_coord for all x in the row.
+    """
     th, tw = target_shape
     lh, lw = level_shape
     yy = int(round(y * (lh - 1) / max(1, th - 1)))
-    xx = int(round(x * (lw - 1) / max(1, tw - 1)))
+    # Vectorized mapping for all columns
+    if tw <= 1:
+        xx = np.zeros((tw,), dtype=np.int32)
+    else:
+        x = np.arange(tw, dtype=np.float32)
+        xx = np.round(x * (lw - 1) / float(tw - 1)).astype(np.int32)
     return yy, xx
 
 
@@ -77,19 +86,61 @@ def stochastic_reconstruct(
 
     out += base_u
 
-    # For each level, sample per-pixel from local neighborhoods
+    r = max(0, int(patch_size) // 2)
+
+    # For each level, sample in row blocks to reduce Python overhead
+    block_rows = 32
     for lvl, lap in enumerate(laplacians):
         lh, lw = lap.shape
-        y_iter = range(th)
+        y_blocks = range(0, th, block_rows)
         if show_progress and th * tw > 256 * 256:
-            y_iter = tqdm(y_iter, desc=f"lvl {lvl} rows", leave=False)
-        for y in y_iter:
-            for x in range(tw):
-                yy, xx = _map_coord((lh, lw), (th, tw), y, x)
-                v = _sample_patch(lap, yy, xx, patch_size, jitter, rng)
-                out[y, x] += v
+            y_blocks = tqdm(y_blocks, desc=f"lvl {lvl} rows", leave=False)
+        # Precompute xx mapping for the whole target width once per level
+        _, xx_all = _map_row_cols((lh, lw), (th, tw), 0)
+        xx_all = xx_all[None, :]  # (1, tw)
+        for y0 in y_blocks:
+            bh = min(block_rows, th - y0)
+            ys = np.arange(y0, y0 + bh, dtype=np.int32)
+            # Map all rows to level rows
+            if th <= 1:
+                yy = np.zeros((bh, 1), dtype=np.int32)
+            else:
+                yy = np.round(
+                    ys.astype(np.float32) * (lh - 1) / float(max(1, th - 1))
+                ).astype(np.int32)[:, None]  # (bh, 1)
+
+            # Jitter per-pixel in the block
+            if jitter != 0.0:
+                jy = np.rint(
+                    rng.normal(0.0, jitter, size=(bh, tw))
+                ).astype(np.int32)
+                jx = np.rint(
+                    rng.normal(0.0, jitter, size=(bh, tw))
+                ).astype(np.int32)
+            else:
+                jy = np.zeros((bh, tw), dtype=np.int32)
+                jx = np.zeros((bh, tw), dtype=np.int32)
+
+            # Compute window centers and bounds
+            cy = np.clip(yy + jy, 0, lh - 1)
+            cx = np.clip(xx_all + jx, 0, lw - 1)
+            yy0 = np.clip(cy - r, 0, lh - 1)
+            yy1 = np.clip(cy + r, 0, lh - 1)
+            xx0 = np.clip(cx - r, 0, lw - 1)
+            xx1 = np.clip(cx + r, 0, lw - 1)
+
+            # Draw random coords within inclusive bounds
+            hy = (yy1 - yy0 + 1).astype(np.int32)
+            hx = (xx1 - xx0 + 1).astype(np.int32)
+            ry = rng.random(size=(bh, tw))
+            rx = rng.random(size=(bh, tw))
+            sy = (yy0 + np.floor(ry * hy)).astype(np.int32)
+            sx = (xx0 + np.floor(rx * hx)).astype(np.int32)
+
+            # Gather and accumulate
+            out[y0: y0 + bh, :] += lap[sy, sx].astype(np.float32)
             if update_cb is not None:
-                update_cb(1)
+                update_cb(bh)
 
     if noise_strength > 0:
         noise = rng.normal(0.0, noise_strength, size=out.shape).astype(
