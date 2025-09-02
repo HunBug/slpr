@@ -1,0 +1,23 @@
+# Example scene: fullscreen 1s, zoom to corner 1s, hold 1s, pan to other corner 1s, hold 1s
+input_path: assets/color_lines.png
+color_mode: luma
+output_width: 512
+output_height: 512
+fps: 30
+border_mode: black
+phases:
+  - duration_sec: 1.0
+    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0 }
+    end:   { mode: center, u: 0.5, v: 0.5, zoom: 1.0 }
+  - duration_sec: 1.0  # zoom to top-left over 1s
+    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0 }
+    end:   { mode: center, u: 0.0, v: 0.0, zoom: 2.0 }
+  - duration_sec: 1.0  # hold 1s
+    start: { mode: center, u: 0.0, v: 0.0, zoom: 2.0 }
+    end:   { mode: center, u: 0.0, v: 0.0, zoom: 2.0 }
+  - duration_sec: 1.0  # pan to bottom-right over 1s
+    start: { mode: center, u: 0.0, v: 0.0, zoom: 2.0 }
+    end:   { mode: center, u: 1.0, v: 1.0, zoom: 4.0 }
+  - duration_sec: 2.0  # hold 1s
+    start: { mode: center, u: 1.0, v: 1.0, zoom: 4.0 }
+    end:   { mode: center, u: 1.0, v: 1.0, zoom: 8.0 }

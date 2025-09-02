@@ -28,3 +28,17 @@ Environment & logging:
 
 Progress tracking:
 - Outer case processing uses tqdm; inner per-pixel sampling shows level row progress for large outputs (> 256x256) to avoid noisy bars for small runs.
+
+## Scene CLI (frames → GIF/MP4)
+
+Render an animation defined by a scene YAML and assemble outputs:
+
+- python -m slpr.scripts.sr_scene_cli --scene scenes/example_scene.yaml
+
+Options:
+- --out-dir /custom/output
+- --seed 123
+- --levels 5 --patch-size 3 --jitter 1.0 --noise-strength 0.1 --samples 1
+- --no-gif / --no-mp4 to skip outputs
+
+A minimal quick test is provided at `scenes/quick_test.yaml`.

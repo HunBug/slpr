@@ -1,0 +1,11 @@
+# Quick test: zoom from 1.0 to top-left 2.0 over 1 second at 10 fps
+input_path: assets/color_lines.png
+color_mode: luma
+output_width: 256
+output_height: 256
+fps: 10
+border_mode: black
+phases:
+  - duration_sec: 1.0
+    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0 }
+    end:   { mode: topleft, u: 0.0, v: 0.0, zoom: 2.0 }
