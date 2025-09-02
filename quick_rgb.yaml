@@ -1,0 +1,19 @@
+global:
+  output_root: outputs
+  num_cores: 1
+  samples_per_render: 1
+  zoom_levels: [100, 800]
+  color_mode: rgb
+  seed: 1
+  log_level: INFO
+
+assets:
+  - name: color_lines
+    path: assets/color_lines.png
+
+configs:
+  - name: quick
+    pyramid_levels: 3
+    patch_size: 3
+    jitter: 0.5
+    noise_strength: 0.05

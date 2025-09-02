@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "pytest (repo root)",
+			"type": "shell",
+			"command": "PYTHONPATH=. pytest -q",
+			"isBackground": false,
+			"group": "test"
+		}
+	]
+}

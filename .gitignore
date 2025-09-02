@@ -1,0 +1,71 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# conda environments
+.conda/
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+
+# Type checkers / analyzers
+.mypy_cache/
+.pytype/
+.pyre/
+.pyright/
+.pyrightcache/
+
+# Virtual environments
+.venv/
+venv/
+venv*/
+env/
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.vim
+.idea/
+
+# VS Code: ignore everything by default but allow common shared files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# --- Project-specific ---
+# Run outputs (timestamped run artifacts, logs, metrics)
+outputs/
+
+# Generated assets (if used)
+assets/generated*/
+
+# Logs
+*.log

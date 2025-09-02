@@ -1,0 +1,32 @@
+global:
+  output_root: outputs
+  num_cores: auto
+  samples_per_render: 8
+  zoom_levels: [100, 200]
+  color_mode: gray
+  seed: 42
+  log_level: INFO
+
+assets:
+  - name: grid
+    path: assets/grid.png
+  - name: blobs
+    path: assets/blobs.png
+  - name: color_lines
+    path: assets/color_lines.png
+  - name: color_blobs
+    path: assets/color_blobs.png
+  - name: color_curves
+    path: assets/color_curves.png
+
+configs:
+  - name: baseline
+    pyramid_levels: 5
+    patch_size: 3
+    jitter: 1.0
+    noise_strength: 0.1
+  - name: sharp_zoom
+    pyramid_levels: 6
+    patch_size: 3
+    jitter: 0.5
+    noise_strength: 0.05
