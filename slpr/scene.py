@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Literal, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
+import os
 
 import numpy as np
 import yaml
@@ -44,6 +45,14 @@ class Scene:
     border_mode: Literal["black", "white", "mirror", "repeat", "edge"] = (
         "black"
     )
+    algorithm: Literal[
+        "slpr",
+        "cv2_nearest",
+        "cv2_linear",
+        "cv2_area",
+        "cv2_cubic",
+        "cv2_lanczos4",
+    ] = "slpr"
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -66,6 +75,7 @@ def load_scene(path: Path) -> Scene:
         data = yaml.safe_load(f)
     fps = int(data.get("fps", 30))
     border_mode = data.get("border_mode", "black")
+    algorithm = data.get("algorithm", "slpr")
     phases: List[Phase] = []
     for ph in data["phases"]:
         # New schema: { duration_sec, start: {..}, end: {..} }
@@ -125,6 +135,7 @@ def load_scene(path: Path) -> Scene:
         output_height=int(data["output_height"]),
         fps=fps,
         border_mode=border_mode,
+    algorithm=algorithm,
         phases=phases,
     )
 
@@ -202,7 +213,8 @@ def render_scene_frames(
                 image = image[y0c:y0c + new_h, :, :]
             h = new_h
 
-    sess = SLPRSession(image, scene.color_mode, params)
+    use_slpr = scene.algorithm == "slpr"
+    sess = SLPRSession(image, scene.color_mode, params) if use_slpr else None
 
     # Build timeline frames
     frames: List[np.ndarray[Any, Any]] = []
@@ -227,8 +239,29 @@ def render_scene_frames(
             # Target recon size = out size scaled by zoom
             recon_h = max(1, int(round(scene.output_height * kf.zoom)))
             recon_w = max(1, int(round(scene.output_width * kf.zoom)))
-            seed_i = None if base_seed is None else int(base_seed + frame_idx)
-            recon = sess.reconstruct((recon_h, recon_w), seed=seed_i)
+            if use_slpr:
+                seed_i = (
+                    None if base_seed is None else int(base_seed + frame_idx)
+                )
+                assert sess is not None
+                recon = sess.reconstruct((recon_h, recon_w), seed=seed_i)
+            else:
+                # OpenCV interpolation path
+                import cv2  # type: ignore
+
+                interp_map = {
+                    "cv2_nearest": cv2.INTER_NEAREST,
+                    "cv2_linear": cv2.INTER_LINEAR,
+                    "cv2_area": cv2.INTER_AREA,
+                    "cv2_cubic": cv2.INTER_CUBIC,
+                    "cv2_lanczos4": cv2.INTER_LANCZOS4,
+                }
+                interp = interp_map.get(scene.algorithm, cv2.INTER_LINEAR)
+                recon = cv2.resize(
+                    image,
+                    (recon_w, recon_h),
+                    interpolation=interp,
+                ).astype(np.float32)
 
             # Crop to (out_h,out_w) from recon using normalized (u,v)
             cx = int(round(kf.u * recon_w))
@@ -291,7 +324,8 @@ def render_scene_to_pngs(
                 image = image[y0c:y0c + new_h, :, :]
             h = new_h
 
-    sess = SLPRSession(image, scene.color_mode, params)
+    use_slpr = scene.algorithm == "slpr"
+    sess = SLPRSession(image, scene.color_mode, params) if use_slpr else None
     fps = max(1, scene.fps)
     tasks: List[Tuple[int, Keyframe, int, int, int, int]] = []
     # (frame_idx, kf, recon_h, recon_w, x0, y0)
@@ -321,8 +355,26 @@ def render_scene_to_pngs(
         task: Tuple[int, Keyframe, int, int, int, int]
     ) -> Tuple[int, np.ndarray[Any, Any]]:
         idx, kf_loc, rh, rw, x0_loc, y0_loc = task
-        seed_i = None if base_seed is None else int(base_seed + idx)
-        recon = sess.reconstruct((rh, rw), seed=seed_i)
+        if use_slpr:
+            seed_i = None if base_seed is None else int(base_seed + idx)
+            assert sess is not None
+            recon = sess.reconstruct((rh, rw), seed=seed_i)
+        else:
+            import cv2  # type: ignore
+
+            interp_map = {
+                "cv2_nearest": cv2.INTER_NEAREST,
+                "cv2_linear": cv2.INTER_LINEAR,
+                "cv2_area": cv2.INTER_AREA,
+                "cv2_cubic": cv2.INTER_CUBIC,
+                "cv2_lanczos4": cv2.INTER_LANCZOS4,
+            }
+            interp = interp_map.get(scene.algorithm, cv2.INTER_LINEAR)
+            recon = cv2.resize(
+                image,
+                (rw, rh),
+                interpolation=interp,
+            ).astype(np.float32)
         frame_arr = _crop_with_border(
             recon, x0_loc, y0_loc, out_w, out_h, scene.border_mode
         )
@@ -330,7 +382,10 @@ def render_scene_to_pngs(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: List[Path] = []
-    if workers is None or workers <= 1:
+    # Default workers to CPU cores
+    if workers is None:
+        workers = max(1, os.cpu_count() or 1)
+    if workers <= 1:
         results = [_render_one(t) for t in tasks]
     else:
         with ThreadPoolExecutor(max_workers=workers) as ex:

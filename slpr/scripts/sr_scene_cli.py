@@ -48,8 +48,23 @@ def build_args() -> argparse.Namespace:
     p.add_argument(
         "--workers",
         type=int,
-        default=12,
-        help="Parallel threads for frame rendering (default: 12)",
+        default=None,
+        help="Parallel threads for frame rendering (default: CPU cores)",
+    )
+    p.add_argument(
+        "--algorithm",
+        choices=[
+            "slpr",
+            "cv2_nearest",
+            "cv2_linear",
+            "cv2_area",
+            "cv2_cubic",
+            "cv2_lanczos4",
+        ],
+        help=(
+            "Override scene algorithm: default is scene or 'slpr'. "
+            "Use cv2_* to compare against OpenCV interpolation."
+        ),
     )
     return p.parse_args()
 
@@ -98,6 +113,11 @@ def main() -> None:
     )
 
     frames_dir = out_dir / "frames"
+    # Allow overriding algorithm via CLI
+    if args.algorithm:
+        from dataclasses import replace
+
+        scene = replace(scene, algorithm=args.algorithm)
     frames = render_scene_to_pngs(
         image,
         scene,
