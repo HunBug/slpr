@@ -21,14 +21,14 @@ phases:
       v: 0.5
       zoom: 1.0
       weights: { a: 1.0, b: 0.0 }
-      params: { noise_strength: 0.03 }
+      params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
     end:
       mode: center
       u: 0.5
       v: 0.5
       zoom: 1.0
       weights: { a: 0.0, b: 1.0 }
-      params: { noise_strength: 0.03 }
+      params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
   - duration_sec: 1.0
     # Increase noise as zoom increases (1.0 -> 4.0)
     start:
@@ -37,11 +37,11 @@ phases:
       v: 0.5
       zoom: 1.0
       weights: { a: 0.0, b: 1.0 }
-      params: { noise_strength: 0.06 }
+      params: { noise_strength: 0.06, jitter: 0.8, patch_size: 3 }
     end:
       mode: center
       u: 0.5
       v: 0.5
       zoom: 4.0
       weights: { a: 0.0, b: 1.0 }
-      params: { noise_strength: 0.18 }
+      params: { noise_strength: 0.18, jitter: 1.5, patch_size: 5 }

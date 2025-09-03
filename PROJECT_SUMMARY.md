@@ -17,6 +17,10 @@ Stochastic Laplacian Pyramid Renderer (SLPR) in Python 3.11. This document expla
   - Streaming frame writes with an overall progress bar; default workers = CPU cores.
   - ROI optimization for large zooms to process only the necessary region.
   - Multi-source inputs with blend modes: weighted and random categorical; per-keyframe weights interpolation.
+  - SLPR parameter controls:
+    - Scene-level defaults via `slpr_params` (or flat keys) for: levels, patch_size, jitter, noise_strength, samples
+    - Per-keyframe `params` with linear interpolation across frames (numbers only)
+    - Precedence: per-keyframe > CLI > scene-level defaults > library defaults
 - Progress & telemetry
   - Global progress, per-stage timings (coarse/fine), environment snapshot, resolved config.
 - Outputs & tests
@@ -54,7 +58,7 @@ Scene render (animation):
 
 ## Configuration
 - Batch PoC: `config.yaml` with `global`, `assets`, `configs`. Resolved config is saved to `outputs/.../resolved_config.json`.
-- Scene: scene YAML supports `fps`, `out_width/height`, `border_mode`, `algorithm`, phases with keyframes (u,v,zoom), and ROI tuning.
+- Scene: scene YAML supports `fps`, `out_width/height`, `border_mode`, `algorithm`, phases with keyframes (u,v,zoom), ROI tuning, multi-source weights, scene-level `slpr_params`, and per-keyframe `params`.
 
 ## How to run
 - Generate assets:
@@ -79,6 +83,7 @@ Scene render (animation):
 - Vectorized reconstruction reduces Python overhead; reuse pyramids per channel.
 - Inter-frame parallelism with single-threaded math inside workers scales well.
 - ROI optimization avoids full-frame work on extreme zooms and keeps memory stable.
+- Rebuilding pyramids is only needed when `levels` changes; other per-frame params reuse cached sessions.
 
 ## Future work
 - Multi-source blending: weighted crossfades and random categorical masks.

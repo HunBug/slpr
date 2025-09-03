@@ -52,8 +52,12 @@ A minimal quick test is provided at `scenes/quick_test.yaml`.
 Scene YAML extras:
 - border_mode: black|white|mirror|repeat|edge (default: black)
 - algorithm: slpr (default) or any cv2_* from the CLI choices above
- - roi_min_zoom: float to trigger ROI optimization when zoom >= value
- - roi_pad_scale: float padding multiplier for ROI context
+- roi_min_zoom: float to trigger ROI optimization when zoom >= value
+- roi_pad_scale: float padding multiplier for ROI context
+- slpr_params (scene-level defaults): levels, patch_size, jitter, noise_strength, samples
+   - Alternatively, you can place flat keys at the top-level: levels, patch_size, jitter, noise_strength, samples
+   - CLI flags still work; precedence: per-keyframe params > CLI overrides > scene-level defaults > library defaults
+   - Interpolation: per-keyframe `params` are linearly interpolated per frame (numbers only)
 
 Multi-source scenes:
 - inputs: list of sources, e.g.
@@ -65,6 +69,40 @@ Multi-source scenes:
 
 Example:
 - scenes/crossfade_two_images.yaml shows a simple crossfade then zoom using SLPR.
+
+Per-keyframe parameter overrides (example snippet):
+
+   phases:
+      - duration_sec: 1.0
+         start:
+            u: 0.5; v: 0.5; zoom: 1.0
+            weights: { a: 1.0, b: 0.0 }
+            params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
+         end:
+            u: 0.5; v: 0.5; zoom: 1.0
+            weights: { a: 0.0, b: 1.0 }
+            params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
+      - duration_sec: 1.0
+         start:
+            u: 0.5; v: 0.5; zoom: 1.0
+            weights: { a: 0.0, b: 1.0 }
+            params: { noise_strength: 0.06, jitter: 0.8, patch_size: 3 }
+         end:
+            u: 0.5; v: 0.5; zoom: 4.0
+            weights: { a: 0.0, b: 1.0 }
+            params: { noise_strength: 0.18, jitter: 1.5, patch_size: 5 }
+
+Scene-level defaults (optional):
+
+   slpr_params:
+      levels: 5
+      patch_size: 3
+      jitter: 1.0
+      noise_strength: 0.1
+      samples: 1
+
+Notes:
+- Changing `levels` mid-scene forces rebuilding pyramids (slower). Other params reuse existing pyramids.
 
 ## Roadmap
 See implemetation_plan.md for milestones:
