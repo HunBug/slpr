@@ -1,0 +1,56 @@
+# Showcase: Weighted crossfade at zoom 1.0, then zoom-in with ramped noise/jitter/patch
+inputs:
+  - name: a
+    path: assets/color_lines.png
+  - name: b
+    path: assets/color_blobs.png
+color_mode: luma
+output_width: 512
+output_height: 512
+fps: 24
+border_mode: black
+algorithm: slpr
+blend_mode: weighted
+
+# Scene-level defaults (can still be overridden via CLI or per-keyframe)
+slpr_params:
+  levels: 5
+  patch_size: 3
+  jitter: 1.0
+  noise_strength: 0.08
+  samples: 1
+
+phases:
+  - duration_sec: 1.0
+    # Clean crossfade at zoom 1.0
+    start:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 1.0, b: 0.0 }
+      params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
+    end:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.03, jitter: 0.5, patch_size: 3 }
+
+  - duration_sec: 1.25
+    # Zoom in with increasing grain
+    start:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.25
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.06, jitter: 0.8, patch_size: 3 }
+    end:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 4.0
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.18, jitter: 1.5, patch_size: 5 }

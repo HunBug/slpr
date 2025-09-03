@@ -1,0 +1,37 @@
+# Showcase: Extreme zoom using ROI optimization
+inputs:
+  - name: main
+    path: assets/color_curves.png
+color_mode: luma
+output_width: 512
+output_height: 512
+fps: 24
+border_mode: black
+algorithm: slpr
+blend_mode: weighted
+
+slpr_params:
+  levels: 6
+  patch_size: 3
+  jitter: 1.0
+  noise_strength: 0.10
+  samples: 1
+
+# Trigger ROI earlier and with moderate padding
+roi_min_zoom: 2.0
+roi_pad_scale: 2.0
+
+phases:
+  - duration_sec: 1.0
+    start:
+      mode: center
+      u: 0.25
+      v: 0.65
+      zoom: 1.0
+      params: { noise_strength: 0.06, jitter: 0.8, patch_size: 3 }
+    end:
+      mode: center
+      u: 0.25
+      v: 0.65
+      zoom: 8.0
+      params: { noise_strength: 0.20, jitter: 1.6, patch_size: 5 }

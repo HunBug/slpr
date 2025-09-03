@@ -833,14 +833,25 @@ def _blend_frames(
         return acc
     # random categorical selection per pixel
     rng = np.random.default_rng(None if seed is None else int(seed))
+    # Normalize probabilities robustly (guard against tiny drift or bad input)
+    p = np.asarray(weights, dtype=np.float64)
+    p = np.clip(p, 0.0, None)
+    s = float(np.sum(p))
+    if not np.isfinite(s) or s <= 0.0:
+        p = np.zeros_like(p)
+        if p.size > 0:
+            p[0] = 1.0
+        s = 1.0
+    else:
+        p = p / s
     # Stack frames for gather
     if frames[0].ndim == 2:
         stack = np.stack(frames, axis=0)  # (N,H,W)
-        idx = rng.choice(len(frames), size=(h, w), p=weights.tolist())
+        idx = rng.choice(len(frames), size=(h, w), p=p.tolist())
         out = stack[idx, np.arange(h)[:, None], np.arange(w)[None, :]]
         return out.astype(np.float32)
     else:
         stack = np.stack(frames, axis=0)  # (N,H,W,C)
-        idx = rng.choice(len(frames), size=(h, w), p=weights.tolist())
+        idx = rng.choice(len(frames), size=(h, w), p=p.tolist())
         out = stack[idx, np.arange(h)[:, None], np.arange(w)[None, :], :]
         return out.astype(np.float32)

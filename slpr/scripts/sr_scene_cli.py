@@ -46,6 +46,12 @@ def build_args() -> argparse.Namespace:
     p.add_argument("--no-gif", action="store_true", help="Skip GIF output")
     p.add_argument("--no-mp4", action="store_true", help="Skip MP4 output")
     p.add_argument(
+        "--gif-fps",
+        type=int,
+        default=None,
+        help="Assemble GIF at this fps (defaults to scene fps)",
+    )
+    p.add_argument(
         "--workers",
         type=int,
         default=None,
@@ -139,7 +145,16 @@ def main() -> None:
     # Assemble outputs
     if not args.no_gif:
         gif_path = out_dir / "animation.gif"
-        assemble_gif(frames, gif_path, scene.fps)
+        gif_fps = int(args.gif_fps) if args.gif_fps else scene.fps
+        # If requested GIF fps is lower than scene fps, subsample frames
+        frame_paths = frames
+        try:
+            if gif_fps < scene.fps and scene.fps > 0:
+                step = max(1, round(scene.fps / max(1, gif_fps)))
+                frame_paths = frames[::step]
+        except Exception:
+            frame_paths = frames
+        assemble_gif(frame_paths, gif_path, gif_fps)
         print(f"GIF written: {gif_path}")
     if not args.no_mp4:
         mp4_path = out_dir / "animation.mp4"

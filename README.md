@@ -104,6 +104,33 @@ Scene-level defaults (optional):
 Notes:
 - Changing `levels` mid-scene forces rebuilding pyramids (slower). Other params reuse existing pyramids.
 
+## Showcase
+
+Three ready-to-run demos under `scenes/`:
+
+1) Weighted crossfade + zoom with grain ramp
+   - Scene: `scenes/showcase_crossfade_zoom.yaml`
+   - Run: python -m slpr.scripts.sr_scene_cli --scene scenes/showcase_crossfade_zoom.yaml --seed 123 --out-dir outputs/showcase/crossfade_zoom
+   - Output: `outputs/showcase/crossfade_zoom/animation.gif`
+   
+   ![Crossfade + Zoom](./showcase_crossfade_zoom.gif)
+
+2) Random blend (categorical mask) between sources
+   - Scene: `scenes/showcase_random_blend.yaml`
+   - Run: python -m slpr.scripts.sr_scene_cli --scene scenes/showcase_random_blend.yaml --seed 123 --out-dir outputs/showcase/random_blend
+   - Output: `outputs/showcase/random_blend/animation.gif`
+   
+   ![Random Blend](./showcase_random_blend.gif)
+
+3) Extreme zoom using ROI optimization
+   - Scene: `scenes/showcase_roi_zoom.yaml`
+   - Run: python -m slpr.scripts.sr_scene_cli --scene scenes/showcase_roi_zoom.yaml --seed 123 --out-dir outputs/showcase/roi_zoom
+   - Output: `outputs/showcase/roi_zoom/animation.gif`
+   
+   ![ROI Zoom](./showcase_roi_zoom.gif)
+
+If you change assets, regenerate via: python -m assets.generate_assets
+
 ## Roadmap
 See implemetation_plan.md for milestones:
 - Production API (arrays only) and tests

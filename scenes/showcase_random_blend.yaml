@@ -1,0 +1,50 @@
+# Showcase: Random categorical blend between two sources (speckled mask)
+inputs:
+  - name: a
+    path: assets/color_lines.png
+  - name: b
+    path: assets/color_curves.png
+color_mode: rgb
+output_width: 512
+output_height: 512
+fps: 24
+border_mode: black
+algorithm: slpr
+blend_mode: random
+
+slpr_params:
+  levels: 5
+  patch_size: 3
+  jitter: 1.0
+  noise_strength: 0.12
+  samples: 1
+
+phases:
+  - duration_sec: 1.0
+    # Start favoring lines
+    start:
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 0.9, b: 0.1 }
+      params: { noise_strength: 0.10 }
+    end:
+      u: 0.5
+      v: 0.5
+      zoom: 1.25
+      weights: { a: 0.5, b: 0.5 }
+      params: { noise_strength: 0.12 }
+  - duration_sec: 1.0
+    # Then favor curves at higher zoom
+    start:
+      u: 0.5
+      v: 0.5
+      zoom: 1.25
+      weights: { a: 0.5, b: 0.5 }
+      params: { noise_strength: 0.12 }
+    end:
+      u: 0.5
+      v: 0.5
+      zoom: 2.5
+      weights: { a: 0.2, b: 0.8 }
+      params: { noise_strength: 0.16 }
