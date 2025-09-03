@@ -1,13 +1,13 @@
 
-# 🧠 Core Concept: Laplacian Pyramid with Stochastic Reconstruction
+# 🧠 Core concept: Stochastic Laplacian Pyramid
 
-Instead of representing the image with Gaussian components or storing a compressed version, you now:
+We decompose images with a Laplacian pyramid and reconstruct with randomized local sampling to produce plausible, grainy detail at arbitrary zooms.
 
-1. **Decompose the image** into multiple spatial frequency bands using a **Laplacian pyramid**
-2. **Reconstruct the image stochastically**, using **local-neighborhood-based sampling**
-3. Add **randomness/dithering** in how details from each level are added back in
-4. At higher zoom levels, rely on **lower frequency bands**, enriched by **noise-based inference** of high-frequency detail
-5. Get results that are:
+1. Decompose into spatial frequency bands via a Laplacian pyramid
+2. Reconstruct stochastically using local-neighborhood sampling with jitter
+3. Add controlled randomness (dither/noise) per level
+4. At high zoom, rely on lower-frequency structure and synthesize plausible detail
+5. Results are:
 
    * **Dotty and grainy**
    * **Plausibly detailed** on zoom-in
@@ -16,18 +16,18 @@ Instead of representing the image with Gaussian components or storing a compress
 
 ---
 
-## 🔁 Comparison to Traditional Laplacian Pyramid
+## 🔁 Traditional vs. stochastic Laplacian
 
 | Step           | Traditional Laplacian         | Stochastic Laplacian (Your Version)          |
 | -------------- | ----------------------------- | -------------------------------------------- |
 | Decomposition  | Fixed filters + downsampling  | Same                                         |
-| Storage        | All detail layers (residuals) | Used as **sampling guidance**                |
-| Reconstruction | Deterministic blending        | **Random sampling** of each level’s detail   |
-| Use case       | Compression / blending        | **Zooming, texture synthesis, dithered art** |
+| Storage        | All detail layers (residuals) | Used as sampling guidance                    |
+| Reconstruction | Deterministic blending        | Random sampling of each level’s detail       |
+| Use case       | Compression / blending        | Zooming, texture synthesis, dithered art     |
 
 ---
 
-## 🧱 Step-by-Step Plan
+## 🧱 Algorithm sketch
 
 ### ✅ 1. **Build the Laplacian Pyramid**
 
@@ -52,11 +52,11 @@ You now have:
 
 ---
 
-### 🎨 2. **Stochastic Reconstruction**
+### 🎨 2. Stochastic reconstruction
 
 The core twist: don’t just blend the layers — **sample from them**.
 
-#### For each pixel (x, y) at target resolution:
+For each pixel (x, y) at target resolution:
 
 * Compute its corresponding location in each pyramid level
 * For each level:
@@ -66,7 +66,7 @@ The core twist: don’t just blend the layers — **sample from them**.
   * Optionally jitter location slightly for grainy look
   * Accumulate sampled values from each level, with appropriate scaling
 
-#### Results:
+Results:
 
 * Each reconstruction is **different** (grainy, dithered)
 * Averaging multiple outputs converges toward original
@@ -74,7 +74,7 @@ The core twist: don’t just blend the layers — **sample from them**.
 
 ---
 
-### 🔍 3. **Zooming / Super-Resolution Use**
+### 🔍 3. Zooming / super-resolution
 
 At zoom level Z:
 
@@ -88,13 +88,13 @@ At zoom level Z:
   * Lower-level detail still gives plausible grain
   * You can add **procedural noise or extrapolated samples** to simulate high-frequency detail
 
-Optional trick:
+Optional:
 
 * Mix real Laplacian components with **synthesized high-frequency noise** (e.g. Perlin, Gaussian, texture patches)
 
 ---
 
-## 🖼️ Visual Properties
+## 🖼️ Visual properties
 
 | Feature                    | Result                                                   |
 | -------------------------- | -------------------------------------------------------- |
@@ -107,7 +107,7 @@ Optional trick:
 
 ---
 
-## 🧪 Experimental Knobs to Play With
+## 🧪 Useful knobs
 
 | Parameter                  | Effect                                              |
 | -------------------------- | --------------------------------------------------- |
@@ -120,27 +120,27 @@ Optional trick:
 
 ---
 
-## ✨ Optional Enhancements
+## ✨ Enhancements
 
-### ➕ Color Preservation
+### ➕ Color preservation
 
 * Do Laplacian on **luma** only
 * Preserve **original chroma**
 * Ensures stochastic sampling doesn't create hue shifts
 
-### ➕ Adaptive Pyramid Construction
+### ➕ Adaptive pyramid
 
 * Split more in high-detail areas (like adaptive quadtree)
 * Use saliency to guide pyramid resolution
 
-### ➕ Multimodal Sampling
+### ➕ Multimodal sampling
 
 * Instead of 1 sample per patch, draw **from local histogram**
 * Simulates plausible variation from texture-like areas
 
 ---
 
-## 🧠 Why This Works Psychovisually
+## 🧠 Why this works psychovisually
 
 * Human vision tolerates high-frequency *noise* better than low-frequency *error*
 * Grain/noise is often perceived as **texture**
@@ -150,7 +150,7 @@ Optional trick:
 
 ---
 
-## 💾 Storage Model (Optional)
+## 💾 Storage model (optional)
 
 If you want to store this representation for future use:
 
@@ -162,7 +162,21 @@ This becomes a **texturable, generative version** of the image.
 
 ---
 
-## 📷 Use Cases
+## 📷 Use cases
+
+## 🚀 Current features and next steps
+- Implemented
+  - Session-based pyramid reuse and vectorized reconstruction.
+  - Color modes: gray, RGB, luma (Y with original chroma).
+  - Scene/CLI to render animations with normalized coordinates and duration-based phases.
+  - Border modes beyond bounds: black, white, edge, repeat, mirror.
+  - Algorithm selector: SLPR vs OpenCV (nearest/linear/area/cubic/lanczos4).
+  - ROI optimization for large zooms and streaming frame writes with progress.
+- Next
+  - Multi-source blending (weighted crossfade and random categorical masks).
+  - Video inputs with timestamped seeking.
+  - Optional diagnostics (variance maps, level contributions).
+
 
 * Artistic zoomable renderers
 * Procedural texture generation from photos

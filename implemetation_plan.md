@@ -1,163 +1,122 @@
-# SLPR - Implementation Plan & Architecture
+# SLPR – Implementation Plan & Roadmap
 
-"""
 Project: Stochastic Laplacian Pyramid Renderer (SLPR)
 Language: Python 3.11
-Focus: Reproducible experiments, parameter variation, multi-core batch execution
-"""
 
-# ============================================================
-# 🧱 Core Principles
-# ============================================================
-# - Modular, inspectable PoC
-# - Generates and processes synthetic and real assets
-# - Config-driven (not CLI-heavy)
-# - Stores intermediate and final outputs
-# - Parallel batch runner with auto timestamped output dirs
+This document captures where we are and the plan to evolve SLPR into a more capable, ergonomic tool. It focuses on concrete milestones with acceptance criteria so we can implement confidently and verify progress.
 
-# ============================================================
-# 📦 Key Libraries
-# ============================================================
-# - numpy, scipy, matplotlib, pillow, opencv-python
-# - pyyaml or tomli (config parsing)
-# - tqdm (progress)
-# - joblib or multiprocessing (parallel execution)
-# - pathlib (modern file system management)
+## 0) Current baseline (today)
+- Batch PoC driven by YAML (`config.yaml`) and `main.py`.
+- Core modules in `slpr/`: pyramids, stochastic reconstruction, rendering/analysis, progress & logging.
+- Outputs saved to timestamped folders under `outputs/`.
+- Assets generator for grids/lines/blobs under `assets/`.
 
-# ============================================================
-# 📂 Project Structure
-# ============================================================
-# slpr/
-# ├── main.py                       # Entry point
-# ├── config.yaml                  # All algorithm/config variations here
-# ├── assets/
-# │   ├── generate_assets.py       # Generate synthetic assets (lines, grids...)
-# │   └── *.png                    # Real and synthetic inputs
-# ├── slpr/
-# │   ├── __init__.py
-# │   ├── config.py                # Config loading and validation
-# │   ├── pyramid.py               # Builds Laplacian/Gaussian pyramids
-# │   ├── sampling.py              # Stochastic reconstruction logic
-# │   ├── render.py                # Zoomed render, averaging, visualization
-# │   ├── analysis.py              # MSE, PSNR, visual metrics
-# │   └── utils.py                 # I/O, timing, image helpers
-# ├── outputs/
-# │   └── YYYY-MM-DD_HHMMSS/       # Timestamped results
-# │       ├── [asset]/[config]/    # Per asset + config
-# │       │   ├── pyramid_level0.png
-# │       │   ├── recon_zoom_100_sample1.png
-# │       │   ├── recon_zoom_100_avg.png
-# │       │   ├── recon_zoom_200_sample1.png
-# │       │   └── ...
-# └── README.md
+Constraints and gaps:
+- API is not yet a small, pure “production” API that returns arrays.
+- No scene/animation system; no per-frame parallel rendering CLI.
+- No border behavior for crops beyond image bounds.
+- No algorithm selector to compare with OpenCV resamplers.
+- No ROI optimization for extreme zooms.
+- No multi-source blending or video input.
 
-# ============================================================
-# ♻️ Pipeline Flow (per run)
-# ============================================================
-# 1. Load config.yaml → list of parameter sets
-# 2. Load/generate image assets
-# 3. For each (asset x config):
-#     a. Build Gaussian + Laplacian pyramids
-#     b. Visualize pyramid levels
-#     c. Reconstruct with stochastic sampling at target zoom levels
-#     d. Average multiple stochastic samples
-#     e. Save all images + logs
+## 1) Milestones and acceptance criteria
 
-# ============================================================
-# 🧩 Config Example (config.yaml)
-# ============================================================
-#
-# global:
-#   output_root: outputs
-#   num_cores: auto
-#   samples_per_render: 16
-#   zoom_levels: [100, 200, 400]
-#
-# assets:
-#   - name: gridlines
-#     path: assets/grid.png
-#   - name: blobs
-#     path: assets/blobs.png
-#
-# configs:
-#   - name: baseline
-#     pyramid_levels: 5
-#     patch_size: 3
-#     jitter: 1.0
-#     seed: 42
-#     noise_strength: 0.1
-#   - name: blurrier
-#     pyramid_levels: 5
-#     patch_size: 5
-#     jitter: 1.2
-#     noise_strength: 0.3
-#   - name: sharp_zoom
-#     pyramid_levels: 6
-#     patch_size: 3
-#     jitter: 0.5
-#     noise_strength: 0.05
+M1: Production API (pure functions)
+- Deliverables:
+	- `slpr/api.py` exposing: build_channel_pyramids, reconstruct_from_pyramids, reconstruct_avg_from_pyramids, reconstruct_image.
+	- Unit tests for shapes, determinism with fixed seeds, and luma path handling.
+- Acceptance:
+	- `pytest` green; functions documented via docstrings; no file I/O or logging.
 
-# ============================================================
-# 🧠 Key Modules - Draft APIs
-# ============================================================
+M2: Scene system + CLI (animation)
+- Deliverables:
+	- `slpr/scene.py` for parsing a scene YAML and rendering frames.
+	- `slpr/scripts/sr_scene_cli.py` to render frames to PNG and optionally assemble GIF/MP4.
+	- Schema highlights:
+		- Normalized (u,v) coordinates with aspect-ratio aware crops.
+		- Phases defined by `duration_sec`; timeline built from `fps`.
+		- `border_mode`: black|white|edge|repeat|mirror for out-of-bounds.
+		- `algorithm`: slpr or cv2_{nearest,linear,area,cubic,lanczos4} to compare.
+		- Defaults: workers = CPU cores; per-frame seed = base_seed + frame_index.
+	- Streaming: write frames as they’re computed (low memory), global progress bar.
+- Acceptance:
+	- Renders example scene to frames under `outputs/.../frames/`.
+	- Optional GIF/MP4 assembly via imageio/imageio-ffmpeg.
+	- Deterministic with fixed seed; border modes visually correct for edge crops.
 
-# slpr/config.py
-load_config(config_path: str) -> dict
+M3: ROI optimization for large zooms
+- Deliverables:
+	- Compute and process only the source region necessary for the target crop, with configurable padding (e.g., `roi_min_zoom`, `roi_pad_scale`).
+- Acceptance:
+	- Rendering of very large zooms remains stable in memory and faster than full-frame.
+	- Visual equivalence to full-frame within crop tolerance.
 
-# slpr/pyramid.py
-build_laplacian_pyramid(image: np.ndarray, levels: int) -> List[np.ndarray]
-build_gaussian_pyramid(image: np.ndarray, levels: int) -> List[np.ndarray]
+M4: Multi-source blending (images)
+- Deliverables:
+	- Extend scene schema to support multiple inputs and per-phase weights.
+	- Blend modes:
+		- weighted: per-frame normalized weights for crossfades.
+		- random: categorical mask per frame seeded by frame index for textural mixes.
+- Acceptance:
+	- Example crossfade scene that transitions between two images.
+	- Deterministic masks when seed fixed.
 
-# slpr/sampling.py
-stochastic_reconstruct(pyramid: List[np.ndarray], zoom: int, config: dict) -> np.ndarray
-stochastic_average(pyramid, zoom, config, samples: int) -> np.ndarray
+Status: Implemented.
+Notes: YAML parsing is isolated in `load_scene` and maps to a neutral Scene model (dataclasses). Renderers use the model + arrays; changing YAML structure is a small refactor in the loader only.
 
-# slpr/render.py
-render_pyramid_images(pyramid: List[np.ndarray]) -> List[np.ndarray]
+M5: Video inputs (optional follow-up)
+- Deliverables:
+	- Allow inputs to be videos with timestamped sampling; per-source keyframes include `time_sec`.
+	- Frame seeking via imageio-ffmpeg.
+- Acceptance:
+	- Example scene combining stills and video with stable performance.
 
-# slpr/analysis.py
-compare_to_original(original, recon) -> dict  # MSE, PSNR, SSIM
+M6: Diagnostics and performance polish
+- Deliverables:
+	- Toggleable diagnostics (variance maps, level contributions) for a frame.
+	- Fine/coarse timing summaries; environment capture for runs.
+- Acceptance:
+	- Diagnostics written only when enabled; overhead negligible when off.
 
-# slpr/utils.py
-save_image(img, path)
-make_output_dir(asset_name, config_name, timestamp) -> Path
+## 2) Scene YAML (draft schema)
+Top-level keys:
+- `fps`: int
+- `out_width`, `out_height`: ints
+- `border_mode`: black|white|edge|repeat|mirror (default black)
+- `algorithm`: slpr|cv2_nearest|cv2_linear|cv2_area|cv2_cubic|cv2_lanczos4 (default slpr)
+- `inputs`: list of { name, path }
+- `phases`: list of phases, each with:
+	- `duration_sec`: float
+	- `keyframes`: list of keyframes, each with:
+		- `u`, `v`: floats in [0,1] (center position)
+		- `zoom`: float (1.0 = native)
+		- optional `weights`: { input_name: weight } for multi-source (normalized per frame)
 
-# assets/generate_assets.py
-main(): generate synthetic assets to assets/ folder
+Algorithm params (global defaults, CLI-overridable):
+- `levels`, `patch_size`, `jitter`, `noise_strength`, `samples`, `seed`, `workers`.
 
-# main.py
-Entry point: reads config, spins parallel jobs, logs progress, manages output folders
+Notes:
+- Legacy convenience: allow a single `input` string; map to `inputs: [{name: main, path: ...}]`.
+- Timeline interpolation: linear by default; smoothing (ease-in/out) may be added later.
 
-# ============================================================
-# 🚀 Parallel Execution
-# ============================================================
-# Use joblib.Parallel or multiprocessing to run (asset, config) pairs in parallel.
-# Example parallel unit: `process_single_case(asset: dict, config: dict)`
+## 3) Work plan (incremental PRs)
+1. Implement M1 (API) with tests.
+2. Implement M2 (scene + CLI) minimal path: single input, slpr algorithm, black border, streaming frames.
+3. Add M2 extras: border modes, algorithm selector, default workers.
+4. Implement M3 (ROI) and verify with a large-zoom example.
+5. Implement M4 (multi-source) with a crossfade example.
+6. Optional M5 video; then M6 diagnostics.
 
-# ============================================================
-# 🧪 Optional Features Later
-# ============================================================
-# - HTML summary report per run
-# - Jupyter notebook viewer
-# - CLI to preview a specific (asset, config) pair
-# - Overlay sampling artifacts (e.g. variance maps)
-# - Video: animated stochastic convergence or zoom-in
-# - Procedural detail hallucination at extreme zooms
+## 4) Verification
+- Always run `pytest` after changes; keep tests small and deterministic.
+- Provide one or two example scenes for manual smoke checks; commit small inputs.
+- For performance claims (ROI), log timing deltas in `outputs/.../run.log`.
 
-# ============================================================
-# ✅ Output Naming Example
-# outputs/2025-09-01_1442/gridlines/sharp_zoom/
-# ├── pyramid_level0.png
-# ├── pyramid_level1.png
-# ├── recon_zoom_100_sample1.png
-# ├── recon_zoom_100_avg.png
-# ├── recon_zoom_200_sample1.png
-# └── ...
+## 5) Dependencies
+- Runtime: numpy, opencv-python, Pillow, PyYAML, tqdm, joblib, imageio, imageio-ffmpeg.
+- Dev: pytest, typing stubs as needed; `pyrightconfig.json` configured.
 
-# ============================================================
-# 🗑️ Next Step
-# ============================================================
-# Implement config loading and asset generator first
-# Then build Laplacian pyramid module (start with grayscale)
-# Then create stochastic sampling and rendering functions
-# Later: add zoom-in reconstruction + animation tools
+## 6) Out-of-scope for now
+- Learned models; neural SR; GPU acceleration.
+- Fancy UIs—stick to CLI + YAML.
+

@@ -1,0 +1,21 @@
+# Crossfade example between two sources
+# Demonstrates multi-source weighted blending
+inputs:
+  - name: a
+    path: assets/color_lines.png
+  - name: b
+    path: assets/color_blobs.png
+color_mode: luma
+output_width: 512
+output_height: 512
+fps: 30
+border_mode: black
+algorithm: slpr
+blend_mode: weighted
+phases:
+  - duration_sec: 1.0
+    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 1.0, b: 0.0 } }
+    end:   { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 0.0, b: 1.0 } }
+  - duration_sec: 1.0
+    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 0.0, b: 1.0 } }
+    end:   { mode: center, u: 0.5, v: 0.5, zoom: 4.0, weights: { a: 0.0, b: 1.0 } }

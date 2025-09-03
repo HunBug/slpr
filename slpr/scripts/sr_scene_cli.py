@@ -66,6 +66,11 @@ def build_args() -> argparse.Namespace:
             "Use cv2_* to compare against OpenCV interpolation."
         ),
     )
+    p.add_argument(
+        "--blend-mode",
+        choices=["weighted", "random"],
+        help="Override scene blend mode for multiple inputs",
+    )
     return p.parse_args()
 
 
@@ -94,8 +99,8 @@ def main() -> None:
     args = build_args()
     scene = load_scene(args.scene)
 
-    # Load input image according to scene color_mode
-    image = load_image(scene.input_path, mode=scene.color_mode)
+    # Load input images according to scene color_mode
+    images = [load_image(s.path, mode=scene.color_mode) for s in scene.sources]
 
     params = SLPRParams(
         levels=args.levels,
@@ -106,20 +111,24 @@ def main() -> None:
     )
 
     stamp = now_stamp()
-    out_dir: Path = (
-        args.out_dir
-        if args.out_dir is not None
-        else Path("outputs") / stamp / scene.input_path.stem / args.scene.stem
-    )
+    out_dir: Path
+    if args.out_dir is not None:
+        out_dir = args.out_dir
+    else:
+        src_stem = "_".join([p.path.stem for p in scene.sources])
+        out_dir = Path("outputs") / stamp / src_stem / args.scene.stem
 
     frames_dir = out_dir / "frames"
     # Allow overriding algorithm via CLI
-    if args.algorithm:
+    if args.algorithm or args.blend_mode:
         from dataclasses import replace
-
-        scene = replace(scene, algorithm=args.algorithm)
+        scene = replace(
+            scene,
+            algorithm=args.algorithm or scene.algorithm,
+            blend_mode=args.blend_mode or scene.blend_mode,
+        )
     frames = render_scene_to_pngs(
-        image,
+        images,
         scene,
         params,
         frames_dir,

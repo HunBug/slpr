@@ -1,8 +1,10 @@
-# SLPR PoC
+# SLPR
 
 Stochastic Laplacian Pyramid Renderer in Python 3.11.
 
-See PROJECT_SUMMARY.md for a concise overview of the implementation and how to run/extend it.
+- Start here: PROJECT_SUMMARY.md (what’s implemented and how to run)
+- Concepts: concept.md (algorithm and design goals)
+- Roadmap: implemetation_plan.md (milestones and next steps)
 
 Quick start:
 
@@ -12,7 +14,7 @@ Quick start:
    - python main.py --config config.yaml
    - For quick smoke tests: python main.py --config quick_rgb.yaml or quick_luma.yaml
 
-Outputs will appear under `outputs/YYYY-MM-DD_HHMMSS/asset/config/`.
+Outputs appear under `outputs/YYYY-MM-DD_HHMMSS/asset/config/`.
 
 Requirements: see requirements.txt
 Dev typing/stubs: see requirements-dev.txt. A pyrightconfig.json is included to reduce type-noise and ignore missing stubs for joblib/tqdm-joblib.
@@ -41,10 +43,32 @@ Options:
 - --levels 5 --patch-size 3 --jitter 1.0 --noise-strength 0.1 --samples 1
 - --workers N (defaults to CPU cores)
 - --algorithm slpr|cv2_nearest|cv2_linear|cv2_area|cv2_cubic|cv2_lanczos4
+- --blend-mode weighted|random (override scene)
 - --no-gif / --no-mp4 to skip outputs
+ - Scene YAML: border_mode black|white|mirror|repeat|edge (default black), algorithm override, ROI tuning: roi_min_zoom, roi_pad_scale.
 
 A minimal quick test is provided at `scenes/quick_test.yaml`.
 
 Scene YAML extras:
 - border_mode: black|white|mirror|repeat|edge (default: black)
 - algorithm: slpr (default) or any cv2_* from the CLI choices above
+ - roi_min_zoom: float to trigger ROI optimization when zoom >= value
+ - roi_pad_scale: float padding multiplier for ROI context
+
+Multi-source scenes:
+- inputs: list of sources, e.g.
+   - inputs: [{ name: a, path: assets/color_lines.png }, { name: b, path: assets/color_blobs.png }]
+- blend_mode: weighted (linear blend) or random (per-pixel categorical using weights)
+- Per-keyframe weights can be provided and are interpolated across the phase:
+   - start: { ..., weights: { a: 1.0, b: 0.0 } }
+   - end:   { ..., weights: { a: 0.0, b: 1.0 } }
+
+Example:
+- scenes/crossfade_two_images.yaml shows a simple crossfade then zoom using SLPR.
+
+## Roadmap
+See implemetation_plan.md for milestones:
+- Production API (arrays only) and tests
+- Scene system + CLI with border modes and algorithm selector
+- ROI optimization for large zooms
+- Multi-source blending (weighted/random) and video inputs (next)

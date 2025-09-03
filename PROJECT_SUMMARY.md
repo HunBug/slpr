@@ -1,98 +1,86 @@
-# Project Summary
+# Project summary
 
-Stochastic Laplacian Pyramid Renderer (SLPR) PoC in Python 3.11. This document captures what’s implemented, how it’s structured, how to run it, and where to extend.
+Stochastic Laplacian Pyramid Renderer (SLPR) in Python 3.11. This document explains what’s implemented, how it’s structured, how to run it, and where we’re going next.
 
 ## What’s implemented
 - Core algorithms
   - Gaussian/Laplacian pyramid construction and visualization.
-  - Stochastic per-level reconstruction and multi-sample averaging.
-  - Color modes: gray, RGB (per-channel), and luma (Y with original Cb/Cr via YCbCr).
-- Batch runner
-  - Config-driven runs over multiple assets and algorithm configs.
-  - Parallel execution with joblib; deterministic seeds when provided.
+  - Stochastic reconstruction and multi-sample averaging; vectorized fast path.
+  - Color modes: gray, RGB (per-channel), luma (Y with original chroma).
+- Batch PoC
+  - Config-driven runs over multiple assets and algorithm configs via `main.py`.
+  - Parallel execution with joblib; deterministic with fixed seeds.
+- Scene + CLI
+  - Scene YAML with normalized (u,v) coordinates and duration-based phases.
+  - Border modes beyond bounds: black, white, edge, repeat, mirror.
+  - Algorithm selector: SLPR vs OpenCV (nearest/linear/area/cubic/lanczos4).
+  - Streaming frame writes with an overall progress bar; default workers = CPU cores.
+  - ROI optimization for large zooms to process only the necessary region.
+  - Multi-source inputs with blend modes: weighted and random categorical; per-keyframe weights interpolation.
 - Progress & telemetry
-  - Aggregated global progress bar across workers (pixel-based), throttled updates.
-  - Per-stage timing with optional profiling and coarse/fine aggregation.
-  - End-of-run aggregated timing summary (JSON + logs) to compare stages.
-- Metrics & outputs
-  - MSE/PSNR metrics (SSIM optional via scikit-image) @100% recon.
-  - Saves pyramid visuals and reconstructions for requested zoom levels.
-- Developer ergonomics
-  - Structured logging, environment snapshot, resolved config capture.
-  - Typed helpers and light tests (color utilities, progress counter).
+  - Global progress, per-stage timings (coarse/fine), environment snapshot, resolved config.
+- Outputs & tests
+  - Saves pyramid visuals and reconstructions; basic tests for color utils and progress.
 
 ## Repository structure (key files)
-- `main.py` — Orchestrates runs, parallelism, progress aggregation, timings, and saving outputs.
-- `slpr/pyramid.py` — Laplacian/gaussian pyramid build + visualization helpers.
-- `slpr/sampling.py` — Stochastic reconstruction and averaging (OpenCV resize with Pillow fallback).
-- `slpr/analysis.py` — MSE/PSNR (+ optional SSIM if scikit-image present).
-- `slpr/render.py` — Rendering/saving of pyramid visualizations.
-- `slpr/utils.py` — Image I/O, color conversions (RGB↔Gray, RGB↔YCbCr), paths, JSON, seeding.
-- `slpr/progress.py` — Shared counter + background global tqdm bar.
-- `slpr/logging_utils.py` — File/console logging setup.
-- `slpr/env_info.py` — Captures Python/platform/env details to JSON.
-- `assets/generate_assets.py` — Creates gray and colorful sample inputs.
-- `tests/` — Basic sanity tests.
-- `quick_rgb.yaml`, `quick_luma.yaml` — Small configs for smoke runs.
+- `main.py` — Batch PoC orchestration for assets/configs.
+- `slpr/api.py` — Session-based API for reconstruction (arrays only).
+- `slpr/scene.py` — Scene parsing and frame rendering with ROI and border handling.
+- `slpr/scripts/sr_scene_cli.py` — CLI to render frames and assemble GIF/MP4.
+- `slpr/pyramid.py` — Laplacian/Gaussian pyramids.
+- `slpr/sampling.py` — Stochastic reconstruction core.
+- `slpr/analysis.py` — Metrics (MSE/PSNR; SSIM optional).
+- `slpr/render.py` — Pyramid visualization helpers.
+- `slpr/utils.py` — I/O, color conversions, JSON, seeding.
+- `slpr/progress.py` — Shared counter + tqdm glue.
+- `slpr/logging_utils.py` — Logging setup.
+- `slpr/env_info.py` — Environment capture.
+- `assets/generate_assets.py` — Synthetic assets.
+- `tests/` — Unit tests.
 
-## Data flow (per asset/config)
-1) Load image (mode per `global.color_mode`).
-2) Build grayscale pyramid for visualization; save pyramid images.
-3) Reconstruct 100% averaged output; compute metrics vs original.
-4) For each `zoom_levels` entry: reconstruct one sample and an averaged image; save both.
-5) Persist per-case timings; at the end aggregate and summarize timings across the run.
+## Data flows
+Batch run (PoC):
+1) Load image per `config.yaml`.
+2) Build pyramids and save visuals.
+3) Reconstruct 100% averaged output; compute metrics.
+4) Reconstruct requested zooms; save outputs.
+5) Persist timings and logs.
+
+Scene render (animation):
+1) Load scene YAML and input(s).
+2) Build frame timeline from `fps` and `duration_sec` per phase.
+3) For each frame: compute crop and zoom; choose algorithm; compute ROI if needed.
+4) Render, apply border mode, write PNG; assemble GIF/MP4 optionally.
 
 ## Configuration
-YAML top-level keys: `global`, `assets`, `configs`.
-- global
-  - `output_root`: directory for timestamped run outputs.
-  - `num_cores`: integer or "auto" (None) for joblib.
-  - `samples_per_render`: averaging samples per reconstruction.
-  - `zoom_levels`: list of zoom percentages (ints).
-  - `color_mode`: "gray" | "rgb" | "luma".
-  - `seed`: optional int for determinism.
-  - `log_level`: DEBUG|INFO|WARN|ERROR.
-  - `profiling` (bool, default true): enable timing.
-  - `profiling_granularity` ("coarse"|"fine", default "coarse"): group stage names.
-  - `progress_update_pixels` (int, default 25000): batch size for progress increments.
-- assets: list of `{ name, path }`.
-- configs: list of algorithm configs `{ name, pyramid_levels, patch_size, jitter, noise_strength }`.
-
-The fully parsed configuration is saved to `outputs/<stamp>/resolved_config.json`.
-
-## Progress & timings
-- Global bar shows aggregated processed pixels across all workers.
-- Updates are throttled by `progress_update_pixels` to reduce synchronization overhead.
-- Per-case timing saved as `timings.json`; aggregated timings saved as `run_timings.json` with a log summary sorted by total time per stage bucket (pyramid, stochastic, save, metrics when coarse).
-- Disable profiling by setting `profiling: false` to minimize overhead.
-
-## Outputs layout
-`outputs/<stamp>/` contains:
-- `run.log`, `environment.json`, `resolved_config.json`, `run_timings.json`.
-- For each asset/config: pyramid images, reconstructions per zoom, metrics at 100%, and per-case `timings.json`.
+- Batch PoC: `config.yaml` with `global`, `assets`, `configs`. Resolved config is saved to `outputs/.../resolved_config.json`.
+- Scene: scene YAML supports `fps`, `out_width/height`, `border_mode`, `algorithm`, phases with keyframes (u,v,zoom), and ROI tuning.
 
 ## How to run
 - Generate assets:
-  - `python -m assets.generate_assets`
-- Execute a run:
-  - `python main.py --config config.yaml`
-  - Quick smoke tests:
-    - `python main.py --config quick_rgb.yaml`
-    - `python main.py --config quick_luma.yaml`
+  - python -m assets.generate_assets
+- Batch PoC:
+  - python main.py --config config.yaml
+  - Quick smoke: python main.py --config quick_rgb.yaml | quick_luma.yaml
+- Scene CLI (frames → GIF/MP4):
+  - python -m slpr.scripts.sr_scene_cli --scene scenes/example_scene.yaml
+  - Options: --workers, --algorithm, --blend-mode, --seed, and algorithm parameters.
 
 ## Dependencies
-- Runtime: numpy, opencv-python, Pillow, PyYAML, tqdm, joblib, tqdm-joblib, scikit-image (optional for SSIM).
-- Dev: pytest, types-Pillow, types-PyYAML; `pyrightconfig.json` relaxes missing-stub noise.
+- Runtime: numpy, opencv-python, Pillow, PyYAML, tqdm, joblib, imageio, imageio-ffmpeg, scikit-image (optional SSIM).
+- Dev: pytest, types-Pillow, types-PyYAML. `pyrightconfig.json` included.
 
 ## Tests
-- `tests/test_color_utils.py` — RGB↔Gray and YCbCr roundtrip sanity.
-- `tests/test_progress_counter.py` — Shared counter increment behavior.
+- tests/test_color_utils.py — RGB↔Gray and YCbCr roundtrip sanity.
+- tests/test_progress_counter.py — Shared counter behavior.
+- tests/test_api.py — Production API shapes, determinism, and luma path.
 
 ## Performance notes
-- Overhead sources: synchronization for progress updates and fine-grained timing.
-- Mitigations implemented: progress batching and coarse timing groups (default). Toggle off profiling for minimal overhead.
+- Vectorized reconstruction reduces Python overhead; reuse pyramids per channel.
+- Inter-frame parallelism with single-threaded math inside workers scales well.
+- ROI optimization avoids full-frame work on extreme zooms and keeps memory stable.
 
-## Next steps (optional)
-- Finer-grained per-zoom timing buckets if needed for deeper profiling.
-- CI workflow for tests and (optional) lint/type checks.
-- Additional metrics or visual diagnostics.
+## Future work
+- Multi-source blending: weighted crossfades and random categorical masks.
+- Video inputs with timestamped seeking; per-source time keyframes.
+- Optional diagnostics (variance maps, level contributions) and CI.
