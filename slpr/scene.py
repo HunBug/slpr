@@ -30,6 +30,10 @@ class Keyframe:
     zoom: float = 1.0
     # Optional per-source weights mapping by source name
     weights: Optional[Dict[str, float]] = None
+    # Optional per-keyframe SLPR parameter overrides
+    # keys: levels (int), patch_size (int), jitter (float),
+    # noise_strength (float), samples (int)
+    params: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -66,6 +70,9 @@ class Scene:
     # region and process that only. pad factor applies to width/height.
     roi_min_zoom: float = 4.0
     roi_pad_scale: float = 2.0
+    # Optional global SLPR parameter defaults
+    # (overridden by CLI and per-keyframe)
+    slpr_defaults: Optional[SLPRParams] = None
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -100,6 +107,7 @@ def _interp_kf(a: Keyframe, b: Keyframe, t: float) -> Keyframe:
         v=float(_lerp(a.v, b.v, t)),
         zoom=float(_lerp(a.zoom, b.zoom, t)),
         weights=_interp_weights(a.weights, b.weights, t),
+        params=_interp_weights(a.params, b.params, t),
     )
 
 
@@ -127,12 +135,44 @@ def load_scene(path: Path) -> Scene:
         raise ValueError(
             "Scene YAML must include either 'inputs' or 'input_path'."
         )
+    # Optional global SLPR params
+    slpr_defaults: Optional[SLPRParams] = None
+    if any(
+        k in data
+        for k in (
+            "levels",
+            "patch_size",
+            "jitter",
+            "noise_strength",
+            "samples",
+            "slpr_params",
+        )
+    ):
+        p = data.get("slpr_params", {})
+        levels = int(data.get("levels", p.get("levels", 5)))
+        patch_size = int(data.get("patch_size", p.get("patch_size", 3)))
+        jitter_v = float(data.get("jitter", p.get("jitter", 1.0)))
+        noise_v = float(
+            data.get("noise_strength", p.get("noise_strength", 0.1))
+        )
+        samples = int(data.get("samples", p.get("samples", 1)))
+        slpr_defaults = SLPRParams(
+            levels=levels,
+            patch_size=patch_size,
+            jitter=jitter_v,
+            noise_strength=noise_v,
+            samples=samples,
+        )
+
     phases: List[Phase] = []
     for ph in data["phases"]:
         # New schema: { duration_sec, start: {..}, end: {..} }
         if "duration_sec" in ph:
             a = ph.get("start", {})
             b = ph.get("end", {})
+            # Extract optional params dicts
+            a_params = a.get("params")
+            b_params = b.get("params")
             phases.append(
                 Phase(
                     duration_sec=float(ph["duration_sec"]),
@@ -142,6 +182,7 @@ def load_scene(path: Path) -> Scene:
                         v=float(a.get("v", 0.5)),
                         zoom=float(a.get("zoom", 1.0)),
                         weights=a.get("weights"),
+                        params=a_params,
                     ),
                     end=Keyframe(
                         mode=b.get("mode", "center"),
@@ -149,6 +190,7 @@ def load_scene(path: Path) -> Scene:
                         v=float(b.get("v", 0.5)),
                         zoom=float(b.get("zoom", 1.0)),
                         weights=b.get("weights"),
+                        params=b_params,
                     ),
                     easing=ph.get("easing", "linear"),
                 )
@@ -163,6 +205,8 @@ def load_scene(path: Path) -> Scene:
             end_frame = int(ph["end_frame"])  # inclusive
             duration_frames = max(1, end_frame - start_frame + 1)
             duration_sec = duration_frames / float(max(1, fps))
+            a_params = a.get("params")
+            b_params = b.get("params")
             phases.append(
                 Phase(
                     duration_sec=float(duration_sec),
@@ -172,6 +216,7 @@ def load_scene(path: Path) -> Scene:
                         v=float(a.get("v", 0.5)),
                         zoom=float(a.get("zoom", 1.0)),
                         weights=a.get("weights"),
+                        params=a_params,
                     ),
                     end=Keyframe(
                         mode=b.get("mode", "center"),
@@ -179,6 +224,7 @@ def load_scene(path: Path) -> Scene:
                         v=float(b.get("v", 0.5)),
                         zoom=float(b.get("zoom", 1.0)),
                         weights=b.get("weights"),
+                        params=b_params,
                     ),
                     easing=ph.get("easing", "linear"),
                 )
@@ -195,6 +241,58 @@ def load_scene(path: Path) -> Scene:
         blend_mode=blend_mode,
         roi_min_zoom=roi_min_zoom,
         roi_pad_scale=roi_pad_scale,
+        slpr_defaults=slpr_defaults,
+    )
+
+
+def _apply_params_override(
+    base: SLPRParams, override: Optional[Dict[str, float]]
+) -> SLPRParams:
+    if not override:
+        return base
+    # Start from base, replace any provided fields
+    levels = int(override.get("levels", base.levels))
+    patch_size = int(override.get("patch_size", base.patch_size))
+    jitter = float(override.get("jitter", base.jitter))
+    noise_strength = float(override.get("noise_strength", base.noise_strength))
+    samples = int(override.get("samples", base.samples))
+    return SLPRParams(
+        levels=levels,
+        patch_size=patch_size,
+        jitter=jitter,
+        noise_strength=noise_strength,
+        samples=samples,
+    )
+
+
+def _merge_base_params(
+    cli_params: SLPRParams, scene_defaults: Optional[SLPRParams]
+) -> SLPRParams:
+    """Merge CLI params with scene-level defaults.
+
+    Precedence: CLI values override scene defaults. However, if a CLI value
+    equals the library default, prefer scene defaults to allow YAML to tune
+    without requiring CLI flags.
+    """
+    if scene_defaults is None:
+        return cli_params
+    lib_def = SLPRParams()  # library defaults
+    return SLPRParams(
+        levels=cli_params.levels
+        if cli_params.levels != lib_def.levels
+        else scene_defaults.levels,
+        patch_size=cli_params.patch_size
+        if cli_params.patch_size != lib_def.patch_size
+        else scene_defaults.patch_size,
+        jitter=cli_params.jitter
+        if cli_params.jitter != lib_def.jitter
+        else scene_defaults.jitter,
+        noise_strength=cli_params.noise_strength
+        if cli_params.noise_strength != lib_def.noise_strength
+        else scene_defaults.noise_strength,
+        samples=cli_params.samples
+        if cli_params.samples != lib_def.samples
+        else scene_defaults.samples,
     )
 
 
@@ -257,11 +355,14 @@ def render_scene_frames(
     # Aspect ratio already matched per source via _match_output_aspect
 
     use_slpr = scene.algorithm == "slpr"
-    # One session per source
-    sessions: Optional[List[SLPRSession]] = None
+    # Sessions cached per 'levels' to reuse pyramids when params.levels varies
+    sessions_cache: Optional[Dict[int, List[SLPRSession]]] = None
+    base_params = _merge_base_params(params, scene.slpr_defaults)
     if use_slpr:
-        sessions = [
-            SLPRSession(img, scene.color_mode, params) for img in prepped
+        sessions_cache = {}
+        # Prebuild for base levels
+        sessions_cache[base_params.levels] = [
+            SLPRSession(img, scene.color_mode, base_params) for img in prepped
         ]
 
     # Build timeline frames
@@ -291,10 +392,21 @@ def render_scene_frames(
             seed_i = None if base_seed is None else int(base_seed + frame_idx)
             frames_src: List[np.ndarray[Any, Any]] = []
             if use_slpr:
-                assert sessions is not None
-                for sess in sessions:
+                assert sessions_cache is not None
+                # Resolve per-frame params
+                eff_params = _apply_params_override(base_params, kf.params)
+                sess_list = sessions_cache.get(eff_params.levels)
+                if sess_list is None:
+                    sess_list = [
+                        SLPRSession(img, scene.color_mode, eff_params)
+                        for img in prepped
+                    ]
+                    sessions_cache[eff_params.levels] = sess_list
+                for sess in sess_list:
                     frames_src.append(
-                        sess.reconstruct((recon_h, recon_w), seed=seed_i)
+                        sess.reconstruct_with_params(
+                            (recon_h, recon_w), eff_params, seed=seed_i
+                        )
                     )
             else:
                 import cv2  # type: ignore
@@ -366,10 +478,13 @@ def render_scene_to_pngs(
     out_h, out_w = scene.output_height, scene.output_width
 
     use_slpr = scene.algorithm == "slpr"
-    base_sess_list: Optional[List[SLPRSession]] = None
+    base_params = _merge_base_params(params, scene.slpr_defaults)
+    # Cache sessions by levels for non-ROI path
+    sess_cache: Optional[Dict[int, List[SLPRSession]]] = None
     if use_slpr:
-        base_sess_list = [
-            SLPRSession(img, scene.color_mode, params) for img in prepped
+        sess_cache = {}
+        sess_cache[base_params.levels] = [
+            SLPRSession(img, scene.color_mode, base_params) for img in prepped
         ]
     fps = max(1, scene.fps)
     tasks: List[Tuple[int, Keyframe, int, int, int, int, float]] = []
@@ -404,6 +519,7 @@ def render_scene_to_pngs(
         use_roi = zoom_loc >= scene.roi_min_zoom
         frames_src: List[np.ndarray[Any, Any]] = []
         seed_i = None if base_seed is None else int(base_seed + idx)
+        eff_params = _apply_params_override(base_params, kf_loc.params)
         if use_roi:
             # Compute ROI per source
             rois: List[Tuple[int, int, int, int, np.ndarray[Any, Any]]] = []
@@ -417,16 +533,18 @@ def render_scene_to_pngs(
                         scene.roi_pad_scale,
                     )
                 )
-            # Note: rrw/rrh/rx0/ry0 all computed from first ROI
-            # (assume identical mapping across sources after AR crop)
+            # Note: rrw/rrh/rx0/ry0 computed from first ROI
             rrw, rrh, rx0, ry0, _ = rois[0]
             if use_slpr:
                 for _, _, _, _, roi_img in rois:
+                    # Build session for ROI using effective levels
                     sess_local = SLPRSession(
-                        roi_img, scene.color_mode, params
+                        roi_img, scene.color_mode, eff_params
                     )
                     frames_src.append(
-                        sess_local.reconstruct((rrh, rrw), seed=seed_i)
+                        sess_local.reconstruct_with_params(
+                            (rrh, rrw), eff_params, seed=seed_i
+                        )
                     )
             else:
                 import cv2  # type: ignore
@@ -447,10 +565,19 @@ def render_scene_to_pngs(
         else:
             rrw, rrh, rx0, ry0 = rw, rh, x0_loc, y0_loc
             if use_slpr:
-                assert base_sess_list is not None
-                for sess in base_sess_list:
+                assert sess_cache is not None
+                sess_list = sess_cache.get(eff_params.levels)
+                if sess_list is None:
+                    sess_list = [
+                        SLPRSession(img, scene.color_mode, eff_params)
+                        for img in prepped
+                    ]
+                    sess_cache[eff_params.levels] = sess_list
+                for sess in sess_list:
                     frames_src.append(
-                        sess.reconstruct((rrh, rrw), seed=seed_i)
+                        sess.reconstruct_with_params(
+                            (rrh, rrw), eff_params, seed=seed_i
+                        )
                     )
             else:
                 import cv2  # type: ignore

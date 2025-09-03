@@ -192,6 +192,132 @@ class SLPRSession:
                 )
         return ycbcr_to_rgb(y, cb, cr)
 
+    def reconstruct_with_params(
+        self,
+        target_shape: Tuple[int, int],
+        params: SLPRParams,
+        seed: int | None = None,
+    ) -> np.ndarray[Any, Any]:
+        """Reconstruct using provided params, reusing prebuilt pyramids.
+
+        Note: The number of levels must match the levels used to build
+        this session's pyramids; otherwise, create a new session.
+        """
+        if params.levels != self.params.levels:
+            raise ValueError(
+                "Params.levels mismatch; build a new SLPRSession "
+                "for this levels"
+            )
+        # Temporarily use the provided params for reconstruction
+        # Implementation mirrors reconstruct() but uses 'params' instead.
+        ps = params
+        if self.color_mode == "gray":
+            laps, base = self._pyramids[0]
+            if ps.samples == 1:
+                y = stochastic_reconstruct(
+                    laps,
+                    base,
+                    target_shape,
+                    ps.patch_size,
+                    ps.jitter,
+                    ps.noise_strength,
+                    seed=seed,
+                )
+            else:
+                y = stochastic_average(
+                    laps,
+                    base,
+                    target_shape,
+                    ps.patch_size,
+                    ps.jitter,
+                    ps.noise_strength,
+                    ps.samples,
+                    seed=seed,
+                )
+            return y
+
+        if self.color_mode == "rgb":
+            outs = []
+            for idx in range(3):
+                laps, base = self._pyramids[idx]
+                if ps.samples == 1:
+                    ch = stochastic_reconstruct(
+                        laps,
+                        base,
+                        target_shape,
+                        ps.patch_size,
+                        ps.jitter,
+                        ps.noise_strength,
+                        seed=seed,
+                    )
+                else:
+                    ch = stochastic_average(
+                        laps,
+                        base,
+                        target_shape,
+                        ps.patch_size,
+                        ps.jitter,
+                        ps.noise_strength,
+                        ps.samples,
+                        seed=seed,
+                    )
+                outs.append(ch)
+            return np.stack(outs, axis=2)
+
+        # luma
+        laps, base = self._pyramids[0]
+        if ps.samples == 1:
+            y = stochastic_reconstruct(
+                laps,
+                base,
+                target_shape,
+                ps.patch_size,
+                ps.jitter,
+                ps.noise_strength,
+                seed=seed,
+            )
+        else:
+            y = stochastic_average(
+                laps,
+                base,
+                target_shape,
+                ps.patch_size,
+                ps.jitter,
+                ps.noise_strength,
+                ps.samples,
+                seed=seed,
+            )
+        assert self._cb is not None and self._cr is not None
+        th, tw = target_shape
+        cb, cr = self._cb, self._cr
+        if cb.shape != y.shape:
+            try:
+                import cv2  # type: ignore
+
+                cb = cv2.resize(cb, (tw, th), interpolation=cv2.INTER_LINEAR)
+                cr = cv2.resize(cr, (tw, th), interpolation=cv2.INTER_LINEAR)
+            except Exception:
+                from PIL import Image
+
+                resample = 2  # bilinear
+                cbi = Image.fromarray(
+                    (np.clip(cb, 0.0, 1.0) * 255).astype(np.uint8)
+                )
+                cri = Image.fromarray(
+                    (np.clip(cr, 0.0, 1.0) * 255).astype(np.uint8)
+                )
+                cb = (
+                    np.asarray(cbi.resize((tw, th), resample))
+                    .astype(np.float32)
+                    / 255.0
+                )
+                cr = (
+                    np.asarray(cri.resize((tw, th), resample))
+                    .astype(np.float32)
+                    / 255.0
+                )
+        return ycbcr_to_rgb(y, cb, cr)
+
 
 def reconstruct_image(
     image: np.ndarray[Any, Any],

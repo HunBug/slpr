@@ -14,8 +14,34 @@ algorithm: slpr
 blend_mode: weighted
 phases:
   - duration_sec: 1.0
-    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 1.0, b: 0.0 } }
-    end:   { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 0.0, b: 1.0 } }
+    # Low noise at zoom 1.0
+    start:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 1.0, b: 0.0 }
+      params: { noise_strength: 0.03 }
+    end:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.03 }
   - duration_sec: 1.0
-    start: { mode: center, u: 0.5, v: 0.5, zoom: 1.0, weights: { a: 0.0, b: 1.0 } }
-    end:   { mode: center, u: 0.5, v: 0.5, zoom: 4.0, weights: { a: 0.0, b: 1.0 } }
+    # Increase noise as zoom increases (1.0 -> 4.0)
+    start:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 1.0
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.06 }
+    end:
+      mode: center
+      u: 0.5
+      v: 0.5
+      zoom: 4.0
+      weights: { a: 0.0, b: 1.0 }
+      params: { noise_strength: 0.18 }
